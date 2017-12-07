@@ -110,26 +110,32 @@ export class APNS {
   }
 
   sendThroughProvider(notification, devices, providers) {
-    return providers[0]
-        .send(notification, devices)
-        .then((response) => {
-          if (response.failed
-              && response.failed.length > 0
-              && providers && providers.length > 1) {
-            let devices = response.failed.map((failure) => { return failure.device; });
-            // Reset the failures as we'll try next connection
-            response.failed = [];
-            return this.sendThroughProvider(notification,
-                            devices,
-                            providers.slice(1, providers.length)).then((retryResponse) => {
-                              response.failed = response.failed.concat(retryResponse.failed);
-                              response.sent = response.sent.concat(retryResponse.sent);
-                              return response;
-                            });
-          } else {
-            return response;
-          }
-        });
+    let allPromises = [];
+    providers.forEach(provider => {
+      const promise = provider.send(notification, devices)
+      .then((response) => {
+        if (response.failed
+            && response.failed.length > 0
+            && providers && providers.length > 1) {
+          let devices = response.failed.map((failure) => { return failure.device; });
+          // Reset the failures as we'll try next connection
+          response.failed = [];
+          return this.sendThroughProvider(notification,
+                          devices,
+                          providers.slice(1, providers.length)).then((retryResponse) => {
+                            response.failed = response.failed.concat(retryResponse.failed);
+                            response.sent = response.sent.concat(retryResponse.sent);
+                            return response;
+                          });
+        } else {
+          return response;
+        }
+      });
+      allPromises.push(promise);
+    });
+    return Promise.all(allPromises).then(promises => {
+      return Promise.resolve(promises[0]);
+    });
   }
 
   static _validateAPNArgs(apnsArgs) {
